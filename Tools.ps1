@@ -199,7 +199,7 @@ $urls = @(
     'https://github.com/zedoonvm1/TasksParser/releases/download/1.1/Tasks.Parser.exe',
     'https://github.com/Orbdiff/Fileless/releases/download/v1.1/Fileless.exe',
     'https://github.com/ItzIceHere/RedLotusAltChecker/releases/download/RL/RedLotusAltChecker.exe',
-    'https://github.com/Orbdiff/PrefetchView/releases/download/v1.6.3/PrefetchView++.exe',
+    'https://github.com/Orbdiff/PrefetchView/releases/download/v1.6.3/PrefetchView++.exe'
     )
 
 
