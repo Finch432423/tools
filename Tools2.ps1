@@ -20,6 +20,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     Write-Host ""
 
     try {
+
         $scriptPath = $PSCommandPath
 
         if ([string]::IsNullOrWhiteSpace($scriptPath)) {
@@ -32,39 +33,39 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
             $arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $scriptPath
 
-            Start-Process -FilePath $processPath -Verb RunAs -ArgumentList $arguments
+            Start-Process -FilePath $processPath -Verb RunAs -ArgumentList $arguments -ErrorAction Stop
 
         }
-        elseif ([IO.Path]::GetFileName($processPath) -notmatch '^(powershell|pwsh)\.exe$') {
+        elseif ([IO.Path]::GetFileName($processPath) -match '^(powershell|pwsh)\.exe$') {
 
-            # Running as a compiled EXE (for example, using PS2EXE).
-            # Relaunch the same executable with administrator permissions.
-
-            Start-Process -FilePath $processPath -Verb RunAs
+            throw "Could not locate the script file to relaunch."
 
         }
         else {
-            throw "Could not locate the script file to relaunch."
+
+            # Running as a compiled EXE.
+            Start-Process -FilePath $processPath -Verb RunAs -ErrorAction Stop
+
         }
 
     }
     catch {
+
         Write-Host "  [ERROR] Unable to obtain administrator permissions." -ForegroundColor Red
         Write-Host "  $($_.Exception.Message)" -ForegroundColor DarkRed
         Read-Host "  Press Enter to exit"
         exit 1
+
     }
 
     exit 0
+
 }
 
 
 # ==================================================
 # TERMINAL DISPLAY
 # ==================================================
-
-# Box-drawing via codepoints so the script parses even
-# if the file is not UTF-8 with BOM.
 
 $U = @{
     H   = [string][char]0x2500
@@ -91,7 +92,6 @@ if ($Host.UI.SupportsVirtualTerminal -eq $false -and $PSVersionTable.PSVersion.M
 '@
 
         $t = Add-Type -MemberDefinition $sig -Name ConsoleMode -Namespace Win32 -PassThru
-
         $h = $t::GetStdHandle(-11)
 
         [uint32]$m = 0
@@ -203,7 +203,7 @@ function Write-TermSection {
 
 
 # ==================================================
-# PACKAGE DOWNLOAD LISTS
+# FULL COLLECTION DOWNLOADS
 # ==================================================
 
 $fullUrls = @(
@@ -247,8 +247,8 @@ $fullUrls = @(
     # Previous Files Recovery
     'https://www.nirsoft.net/utils/previousfilesrecovery-x64.zip',
 
-    # RedLotus Mod Analyzer
-    'https://github.com/ItzIceHere/RedLotus-Mod-Analyzer/releases/download/RL/RedLotusModAnalyzer.exe',
+    # RedLotus Mod Analyzer - Finch Repository
+    'https://raw.githubusercontent.com/Finch432423/tools/main/RedLotusModAnalyzer.exe',
 
     # Tasks Parser
     'https://github.com/zedoonvm1/TasksParser/releases/download/1.1/Tasks.Parser.exe',
@@ -256,8 +256,8 @@ $fullUrls = @(
     # Fileless
     'https://github.com/Orbdiff/Fileless/releases/download/v1.1/Fileless.exe',
 
-    # RedLotus Alt Checker
-    'https://github.com/ItzIceHere/RedLotusAltChecker/releases/download/RL/RedLotusAltChecker.exe',
+    # RedLotus Alt Checker - Finch Repository
+    'https://raw.githubusercontent.com/Finch432423/tools/main/RedLotusAltChecker.exe',
 
     # PrefetchView++
     'https://github.com/Orbdiff/PrefetchView/releases/download/v1.6.3/PrefetchView++.exe',
@@ -269,7 +269,7 @@ $fullUrls = @(
 
 
 # ==================================================
-# REDUCED DOWNLOAD LIST
+# REDUCED COLLECTION DOWNLOADS
 # ==================================================
 
 $reducedUrls = @(
@@ -292,20 +292,17 @@ $reducedUrls = @(
     # Previous Files Recovery
     'https://www.nirsoft.net/utils/previousfilesrecovery-x64.zip',
 
-    # RedLotus Mod Analyzer
-    'https://github.com/ItzIceHere/RedLotus-Mod-Analyzer/releases/download/RL/RedLotusModAnalyzer.exe',
+    # RedLotus Mod Analyzer - Finch Repository
+    'https://raw.githubusercontent.com/Finch432423/tools/main/RedLotusModAnalyzer.exe',
 
-    # RedLotus Alt Checker
-    'https://github.com/ItzIceHere/RedLotusAltChecker/releases/download/RL/RedLotusAltChecker.exe',
+    # RedLotus Alt Checker - Finch Repository
+    'https://raw.githubusercontent.com/Finch432423/tools/main/RedLotusAltChecker.exe',
 
     # System Informer
     'https://github.com/winsiderss/si-builds/releases/download/3.2.25275.112/systeminformer-build-canary-setup.exe',
 
     # USBDeview
     'https://www.nirsoft.net/utils/usbdeview-x64.zip'
-
-    # VoidToils
-    'https://www.voidtools.com/Everything-1.4.1.1032.x86-Setup.exe'
 
 )
 
@@ -323,7 +320,7 @@ function Show-PackageMenu {
         Write-Host ""
         Write-Host "  SELECT YOUR DOWNLOAD PACKAGE" -ForegroundColor White
         Write-Host ""
-        Write-Host "  Choose which collection you would like to install." -ForegroundColor DarkGray
+        Write-Host "  Choose which collection you would like to download." -ForegroundColor DarkGray
         Write-Host ""
 
         Write-Host "  [1] FULL COLLECTION" -ForegroundColor Cyan -NoNewline
@@ -360,14 +357,71 @@ function Show-PackageMenu {
             }
 
             default {
+
                 Write-Host ""
                 Write-Host "  [!!] Invalid selection. Please choose 1, 2 or Q." -ForegroundColor Yellow
+
                 Start-Sleep -Milliseconds 1200
+
                 cls
                 Write-TermHeader
+
             }
 
         }
+
+    }
+
+}
+
+
+# ==================================================
+# WINDOWS DEFENDER EXCLUSION
+# ==================================================
+
+function Add-DefenderExclusion {
+
+    param(
+        [string]$Path
+    )
+
+    Write-TermSection "windows defender"
+
+    Write-Host "  " -NoNewline
+    Write-Host "[..]" -ForegroundColor DarkCyan -NoNewline
+    Write-Host " registering workspace exclusion..." -ForegroundColor DarkGray
+
+    try {
+
+        if (-not (Get-Command Add-MpPreference -ErrorAction SilentlyContinue)) {
+            throw "Windows Defender exclusion command is unavailable."
+        }
+
+        $prefs = (Get-MpPreference -ErrorAction Stop).ExclusionPath
+
+        if (@($prefs) -notcontains $Path) {
+
+            Add-MpPreference -ExclusionPath $Path -ErrorAction Stop
+
+            Write-Host "  " -NoNewline
+            Write-Host "[OK]" -ForegroundColor Green -NoNewline
+            Write-Host " exclusion registered (Defender)" -ForegroundColor Gray
+
+        }
+        else {
+
+            Write-Host "  " -NoNewline
+            Write-Host "[..]" -ForegroundColor DarkGray -NoNewline
+            Write-Host " path already excluded" -ForegroundColor DarkGray
+
+        }
+
+    }
+    catch {
+
+        Write-Host "  " -NoNewline
+        Write-Host "[!!]" -ForegroundColor Yellow -NoNewline
+        Write-Host " could not add exclusion: $($_.Exception.Message)" -ForegroundColor DarkYellow
 
     }
 
@@ -434,6 +488,17 @@ New-Item -Path $folder -ItemType Directory -Force | Out-Null
 Set-Location -LiteralPath $folder
 
 
+# ==================================================
+# REGISTER DEFENDER EXCLUSION
+# ==================================================
+
+Add-DefenderExclusion -Path $folder
+
+
+# ==================================================
+# WORKSPACE INFORMATION
+# ==================================================
+
 Write-TermSection "workspace"
 
 Write-Host "  " -NoNewline
@@ -448,7 +513,7 @@ Write-Host "Package: $packageLabel" -ForegroundColor Gray
 
 
 # ==================================================
-# DOWNLOAD SUPPORT
+# DOWNLOAD FUNCTION
 # ==================================================
 
 function Download-File {
@@ -457,7 +522,7 @@ function Download-File {
         [string]$Url
     )
 
-    $fileName = Split-Path $Url -Leaf
+    $fileName = [IO.Path]::GetFileName(([uri]$Url).AbsolutePath)
     $dest = Join-Path $folder $fileName
 
     try {
@@ -527,7 +592,7 @@ foreach ($url in $urls) {
 
     $counter++
 
-    $leaf = Split-Path $url -Leaf
+    $leaf = [IO.Path]::GetFileName(([uri]$url).AbsolutePath)
 
     $pct = if ($total -gt 0) {
         [int](($counter / $total) * 100)
